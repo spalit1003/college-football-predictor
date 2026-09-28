@@ -15,7 +15,7 @@ def get_team_stats(team, before_date=None):
         if not game.get("completed"):
             continue
 
-        # Use games that happened before the target game
+        # Only use games before the target game
         if before_date and game["startDate"] >= before_date:
             continue
 
@@ -43,19 +43,12 @@ def get_team_stats(team, before_date=None):
         else:
             results.append(0)
 
-    # If the team hasn't played yet, use neutral 50%
-    if completed_games:
-        win_pct = wins / len(completed_games)
-    else:
-        win_pct = 0.5
+    # Use neutral 50% if the team hasn't played yet
+    win_pct = wins / len(completed_games) if completed_games else 0.5
 
-    # Calculate win percentage over last 7 games
+    # Win percentage over the last 7 games
     recent_results = results[-7:]
-
-    if recent_results:
-        recent_win_pct = sum(recent_results) / len(recent_results)
-    else:
-        recent_win_pct = 0.5
+    recent_win_pct = sum(recent_results) / len(recent_results) if recent_results else 0.5
 
     return {
         "team": team,
@@ -100,13 +93,12 @@ def predict_game(
         away["elo"] = pregame_away_elo
 
     if home["elo"] is None or away["elo"] is None:
-        missing_team = (home_team if home["elo"] is None else away_team)
-        print(f"\n⚠️ Cannot predict this game: " f"Elo rating unavailable for {missing_team}.")
-        return
+        missing_team = home_team if home["elo"] is None else away_team
+        raise ValueError(f"Elo rating unavailable for {missing_team}.")
 
     elo_diff = home["elo"] - away["elo"]
     win_pct_diff = home["win_pct"] - away["win_pct"]
-    recent_form_diff = (home["recent_win_pct"] - away["recent_win_pct"])
+    recent_form_diff = home["recent_win_pct"] - away["recent_win_pct"]
     home_field = 0 if neutral else 1
 
     features = pd.DataFrame([{
@@ -121,45 +113,33 @@ def predict_game(
     away_probability = probabilities[0]
     home_probability = probabilities[1]
 
-    print("\n🏈 COLLEGE FOOTBALL PREDICTOR")
-    print("-----------------------------------")
+    winner = home_team if home_probability > away_probability else away_team
 
-    print(f"{home_team}: {home_probability:.1%}")
-    print(f"{away_team}: {away_probability:.1%}")
-
-    winner = (
-        home_team
-        if home_probability > away_probability
-        else away_team
-    )
-
-    print(f"\n🏆 Predicted winner: {winner}")
+    return {
+        "home_team": home_team,
+        "away_team": away_team,
+        "home_probability": home_probability,
+        "away_probability": away_probability,
+        "winner": winner,
+        "home_stats": home,
+        "away_stats": away
+    }
 
 
 def predict_upcoming_game(team_1, team_2):
     matches = find_matchup(team_1, team_2)
-
     upcoming_matches = [game for game in matches if not game.get("completed")]
 
     if not upcoming_matches:
-        raise ValueError(
-            "No upcoming matchup found between these teams."
-        )
+        raise ValueError("No upcoming matchup found between these teams.")
 
-    # Use the next upcoming matchup
     upcoming_matches.sort(key=lambda g: g["startDate"])
     game = upcoming_matches[0]
 
     actual_home = game["homeTeam"]
     actual_away = game["awayTeam"]
 
-    print(f"\nFound game: {actual_away} @ {actual_home}")
-    print(f"Date: {game['startDate']}")
-
-    if game.get("neutralSite", False):
-        print("Neutral site: Yes")
-
-    predict_game(
+    prediction = predict_game(
         home_team=actual_home,
         away_team=actual_away,
         neutral=game.get("neutralSite", False),
@@ -167,33 +147,26 @@ def predict_upcoming_game(team_1, team_2):
         pregame_home_elo=game.get("homePregameElo"),
         pregame_away_elo=game.get("awayPregameElo")
     )
+
+    prediction["date"] = game["startDate"]
+    prediction["neutral"] = game.get("neutralSite", False)
+
+    return prediction
 
 
 def backtest_game(team_1, team_2):
     matches = find_matchup(team_1, team_2)
-
     completed_matches = [game for game in matches if game.get("completed")]
 
     if not completed_matches:
-        print(f"\n⚠️ No such game exists!")
-        return
+        raise ValueError("No completed matchup found between these teams.")
 
     game = completed_matches[0]
 
-    # Use the API's designation
     actual_home = game["homeTeam"]
     actual_away = game["awayTeam"]
 
-    print(f"\nFound game: {actual_away} @ {actual_home}")
-    print(f"Date: {game['startDate']}")
-
-    print(
-        f"Actual result: "
-        f"{actual_home} {game['homePoints']} - "
-        f"{actual_away} {game['awayPoints']}"
-    )
-
-    predict_game(
+    prediction = predict_game(
         home_team=actual_home,
         away_team=actual_away,
         neutral=game.get("neutralSite", False),
@@ -202,23 +175,54 @@ def backtest_game(team_1, team_2):
         pregame_away_elo=game.get("awayPregameElo")
     )
 
+    prediction["date"] = game["startDate"]
+    prediction["home_points"] = game["homePoints"]
+    prediction["away_points"] = game["awayPoints"]
 
-print("\n🏈 College Football Predictor")
-print("\n1 - Predict upcoming game")
-print("2 - Backtest completed game")
-
-mode = input("\nChoose mode: ").strip()
+    return prediction
 
 
-if mode == "1":
-    team_1 = input("Team 1: ").strip()
-    team_2 = input("Team 2: ").strip()
-    predict_upcoming_game(team_1, team_2)
+# Terminal version
+if __name__ == "__main__":
+    print("\n🏈 College Football Predictor")
+    print("\n1 - Predict upcoming game")
+    print("2 - Backtest completed game")
 
-elif mode == "2":
-    team_1 = input("Team 1: ").strip()
-    team_2 = input("Team 2: ").strip()
-    backtest_game(team_1, team_2)
+    mode = input("\nChoose mode: ").strip()
 
-else:
-    print("Invalid option!")
+    if mode == "1":
+        team_1 = input("Team 1: ").strip()
+        team_2 = input("Team 2: ").strip()
+
+        try:
+            result = predict_upcoming_game(team_1, team_2)
+
+            print(f"\n{result['home_team']}: {result['home_probability']:.1%}")
+            print(f"{result['away_team']}: {result['away_probability']:.1%}")
+            print(f"\n🏆 Predicted winner: {result['winner']}")
+
+        except ValueError as error:
+            print(f"\n⚠️ {error}")
+
+    elif mode == "2":
+        team_1 = input("Team 1: ").strip()
+        team_2 = input("Team 2: ").strip()
+
+        try:
+            result = backtest_game(team_1, team_2)
+
+            print(
+                f"\nActual result: "
+                f"{result['home_team']} {result['home_points']} - "
+                f"{result['away_team']} {result['away_points']}"
+            )
+
+            print(f"\n{result['home_team']}: {result['home_probability']:.1%}")
+            print(f"{result['away_team']}: {result['away_probability']:.1%}")
+            print(f"\n🏆 Predicted winner: {result['winner']}")
+
+        except ValueError as error:
+            print(f"\n⚠️ {error}")
+
+    else:
+        print("Invalid option!")
