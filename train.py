@@ -67,9 +67,6 @@ for feature in FEATURES:
 # Train production model
 # --------------------------------
 
-# IMPORTANT: Do not include 2026.
-# 2026 remains unseen evaluation data.
-
 X = train_df[FEATURES]
 y = train_df["home_win"]
 
