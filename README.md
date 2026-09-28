@@ -4,7 +4,7 @@ A machine learning app that predicts the winner of college football games.
 
 The model uses pre-game Elo ratings, season win percentage, recent form, and home-field advantage to estimate each team's win probability.
 
-The final Logistic Regression model achieved **73.62% accuracy** when trained on the 2022–2024 seasons and evaluated on the unseen 2025 season.
+The final Logistic Regression model achieved **74.88% accuracy** on 215 unseen 2026 games to date, after training on games from 2022–2025.
 
 ## Features
 
