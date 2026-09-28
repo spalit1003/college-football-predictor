@@ -41,7 +41,7 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in the project root and add your College Football Data API key:
+Create a `.env` file in the project root and add your College Football Data API key from https://collegefootballdata.com/key:
 
 ```text
 CFBD_API_KEY=your_api_key_here
