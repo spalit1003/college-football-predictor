@@ -5,6 +5,14 @@ from fetch_data import get_games
 RECENT_GAMES = 7
 
 # Take raw games from the API and turns them into ML-ready rows
+from collections import defaultdict, deque
+import pandas as pd
+from fetch_data import get_games
+
+RECENT_GAMES = 7
+
+
+# Take raw games from the API and turn them into ML-ready rows
 def create_features(games):
     games = sorted(games, key=lambda g: g["startDate"])
 
@@ -40,11 +48,21 @@ def create_features(games):
             home_points = game.get("homePoints")
             away_points = game.get("awayPoints")
 
+            # Cannot use games without scores or ties
+            if home_points is None or away_points is None or home_points == away_points:
+                continue
+
+            home_won = int(home_points > away_points)
+
+            # Every valid completed game should update team history
+            completed_games.append((home, away, home_won))
+
             home_elo = game.get("homePregameElo")
             away_elo = game.get("awayPregameElo")
 
-            # Skip games with missing data or ties
-            if home_points is None or away_points is None or home_elo is None or away_elo is None or home_points == away_points:
+            # Missing Elo means we cannot create an ML row,
+            # but the game still updates team history below
+            if home_elo is None or away_elo is None:
                 continue
 
             home_record = team_records[home]
@@ -63,17 +81,14 @@ def create_features(games):
 
             # Recent form
             if len(recent_results[home]) > 0:
-                home_recent_win_pct = (
-                    sum(recent_results[home])/ len(recent_results[home]))
+                home_recent_win_pct = sum(recent_results[home]) / len(recent_results[home])
             else:
                 home_recent_win_pct = 0.5
 
             if len(recent_results[away]) > 0:
-                away_recent_win_pct = (sum(recent_results[away])/ len(recent_results[away]))
+                away_recent_win_pct = sum(recent_results[away]) / len(recent_results[away])
             else:
                 away_recent_win_pct = 0.5
-
-            home_won = int(home_points > away_points)
 
             rows.append({
                 "season": game["season"],
@@ -86,8 +101,6 @@ def create_features(games):
                 "home_field": int(not game.get("neutralSite", False)),
                 "home_win": home_won
             })
-
-            completed_games.append((home, away, home_won))
 
         # Update records only AFTER generating features
         for home, away, home_won in completed_games:
@@ -106,14 +119,14 @@ def create_features(games):
 if __name__ == "__main__":
     all_games = []
 
-    for year in range(2022, 2026):
+    for year in range(2022, 2027):
         print(f"Fetching {year} games...")
         all_games.extend(get_games(year))
 
     # Calculate features for each season
     datasets = []
 
-    for year in range(2022, 2026):
+    for year in range(2022, 2027):
         season_games = [
             g for g in all_games
             if g["season"] == year
